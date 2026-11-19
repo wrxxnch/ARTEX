@@ -152,11 +152,24 @@ RUN set -eux; \
 # preinstalled (--install-all-deps) so scans never need pip at runtime, which
 # would fail under a program's egress allowlist.
 ARG BBOT_VERSION=3.0.2
+ARG BBOT_HOME=/var/lib/artex/bbot
+ARG BBOT_SHARED_DEPS_DIR=/var/lib/artex/bbot
+ENV BBOT_HOME=${BBOT_HOME}
+ENV BBOT_SHARED_DEPS_DIR=${BBOT_SHARED_DEPS_DIR}
 # arm64: bbot's Chrome and retirejs's Node are x86-64; use native builds.
 RUN set -eux; \
     python -m venv /opt/bbot; \
     /opt/bbot/bin/pip install --no-cache-dir "bbot==${BBOT_VERSION}"; \
     ln -s /opt/bbot/bin/bbot /usr/local/bin/bbot; \
+    mkdir -p "${BBOT_HOME}/cache" \
+             "${BBOT_HOME}/tools" \
+             "${BBOT_HOME}/temp" \
+             "${BBOT_HOME}/lib" \
+             "${BBOT_HOME}/scans" \
+             /root/.config/bbot; \
+    printf 'home: %s\n' "${BBOT_HOME}" > /root/.config/bbot/bbot.yml; \
+    touch "${BBOT_HOME}/cache/.write-test"; \
+    rm "${BBOT_HOME}/cache/.write-test"; \
     if [ "${TARGETARCH:-amd64}" = "arm64" ]; then \
       apt-get update; \
       apt-get install -y --no-install-recommends chromium; \
@@ -206,7 +219,7 @@ COPY start.sh /app/start.sh
 RUN chmod +x /app/artex /app/start.sh && mkdir -p /app/keys
 COPY skills/ /app/skills/
 # persistence points: data/ (traffic index, task files, transcripts) and keys/ (jwt.key, secret.key, via ARTEX_JWT_KEY_DIR)
-VOLUME ["/app/data", "/app/keys"]
+VOLUME ["/app/data", "/app/keys", "/var/lib/artex/bbot"]
 EXPOSE 8787 8788
 ENTRYPOINT ["/app/start.sh"]
 CMD ["-addr", ":8787", "-proxy", ":8788"]
