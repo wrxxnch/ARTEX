@@ -27,7 +27,14 @@ RUN npm run build:static
 FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
+RUN for attempt in 1 2 3; do \
+      if go mod download; then exit 0; fi; \
+      if [ "$attempt" -lt 3 ]; then \
+        echo "go mod download failed (attempt $attempt/3); retrying in 5s" >&2; \
+        sleep 5; \
+      fi; \
+    done; \
+    echo "go mod download failed after 3 attempts" >&2; exit 1
 COPY . .
 # Reuse the frontend built above; build.sh skips its own frontend step.
 COPY --from=web /src/web/out ./server/webui/dist
@@ -122,8 +129,8 @@ RUN set -eux; \
     esac; \
     base="https://nodejs.org/dist/v${NODE_VERSION}"; \
     asset="node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz"; \
-    curl -fsSL "$base/$asset" -o "/tmp/$asset"; \
-    curl -fsSL "$base/SHASUMS256.txt" -o /tmp/SHASUMS256.txt; \
+    curl --retry 5 --retry-all-errors --retry-delay 2 -fsSL "$base/$asset" -o "/tmp/$asset"; \
+    curl --retry 5 --retry-all-errors --retry-delay 2 -fsSL "$base/SHASUMS256.txt" -o /tmp/SHASUMS256.txt; \
     want="$(awk -v a="$asset" '$2 == a { print $1 }' /tmp/SHASUMS256.txt)"; \
     if [ -z "$want" ]; then echo "no checksum entry for $asset" >&2; exit 1; fi; \
     got="$(sha256sum "/tmp/$asset" | cut -d' ' -f1)"; \
